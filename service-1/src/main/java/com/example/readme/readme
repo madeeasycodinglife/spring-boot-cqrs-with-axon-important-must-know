@@ -1,0 +1,132 @@
+
+========================================================= Important updates from Axon Framework =================================================
+ Note :: Danger ::
+ =================
+ Only make folder structure and class name and filed same which you are going to use in future else unnecessary folders and
+ class will be created which is not good.
+ =================
+/--------------------------- Note how axon framework find CommandHandler and all types of component -------------------------------------
+
+
+Q:1) How you  can handle @CommandHandler from another microservice? If you publish a commandGateway.sendAndWait(XXXYYYCommand) from
+service-A and want to handle form service-B using @CommandHandler ?
+
+Ans ==> Very Very Important to know that what package are in Service-n that the same name should be present in the target service
+as :: Check the package scanning configuration:
+=============================================================================================================
+Ensure that Axon's package scanning is properly configured in both services. Axon uses package scanning
+to discover and register command handlers and other components. Make sure the package containing the command
+handler in service-n is being same as service-m as a result package scanning by axon will be successfully scanned correctly.
+=============================================================================================================
+
+Example :: if your use commandGateway.sendAndWait(new CreateUserCommand(...)) from service-m's controller class and its package is
+import com.example.commands.CreateUserCommand; and want to handle form service-n using @CommandHandler then you have import that same package
+in the service-n's aggreate class i.e. import com.example.commands.CreateUserCommand; example ::
+
+
+service-m ::
+============
+
+
+package com.example.controller;
+
+import com.example.commands.CreateUserCommand; <-------------------------------------------
+import com.example.model.UserRestModel;
+import org.axonframework.commandhandling.gateway.CommandGateway;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/users")
+public class UserCommandController {
+
+    private final CommandGateway commandGateway;
+
+    public UserCommandController(CommandGateway commandGateway) {
+        this.commandGateway = commandGateway;
+    }
+
+    @PostMapping("/add")
+    public String addUser(@RequestBody UserRestModel userRestModel) {
+        CreateUserCommand createUserCommand = CreateUserCommand.builder()
+                .userId(UUID.randomUUID().toString())
+                .userName(userRestModel.getUserName())
+                .password(userRestModel.getPassword())
+                .build();
+        commandGateway.sendAndWait(createUserCommand);
+        return "add user";
+    }
+}
+
+service-n:
+==========
+
+package com.example.aggregate;
+
+import com.example.commands.CreateUserCommand;  <-------------------------------------------
+import com.example.events.UserCreatedEvent;
+import lombok.NoArgsConstructor;
+import org.axonframework.commandhandling.CommandHandler;
+import org.axonframework.eventsourcing.EventSourcingHandler;
+import org.axonframework.modelling.command.AggregateIdentifier;
+import org.axonframework.modelling.command.AggregateLifecycle;
+import org.axonframework.spring.stereotype.Aggregate;
+
+@Aggregate
+@NoArgsConstructor
+public class UserAggregate {
+    @AggregateIdentifier
+    private String userId;
+    private String userName;
+    private String password;
+
+    @CommandHandler
+    public UserAggregate(CreateUserCommand createUserCommand) {
+        UserCreatedEvent userCreatedEvent = UserCreatedEvent.builder()
+                .userId(createUserCommand.getUserId())
+                .userName(createUserCommand.getUserName())
+                .password(createUserCommand.getPassword())
+                .build();
+        AggregateLifecycle.apply(userCreatedEvent);
+    }
+
+    @EventSourcingHandler
+    public void on(UserCreatedEvent userCreatedEvent) {
+        this.userId = userCreatedEvent.getUserId();
+        this.userName = userCreatedEvent.getUserName();
+        this.password = userCreatedEvent.getPassword();
+    }
+}
+
+Q) So how you will import the same package as it is ??
+ Ans ==> You have make the same folder structure + same class name + same field in service-x similar to service-y. That means
+ the folder structure and class name and fields should be same/matched in both service-x and service-y. For in this case
+ service-1's folder structure and class name and filed are matched with service-2.
+
+ Note :: Danger ::
+ =================
+ Only make folder structure and class name and filed same which you are going to use in future else unnecessary folders and
+ class will be created which is not good. and both services should be connected to the same instance of Axon Server (regardless of the port).
+ =================
+
+ Here i have used two docker-compose.yml with different axon server ports [one is default port and another is 8125] but still
+ my two services can be connected to the same instance of Axon Server (regardless of the port) i.e i am publishing the
+ command form one service and can receive the command from another service.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
